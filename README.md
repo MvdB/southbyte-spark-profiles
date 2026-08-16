@@ -45,7 +45,7 @@ Model directories use `<owner>--<model-name>` (HF id with `/` → `--`), defined
 - [southbyte-vllm](https://github.com/MvdB/southbyte-vllm) — vLLM serving runner + LLM evaluation testplan
 - [southbyte-tts](https://github.com/MvdB/southbyte-tts) — TTS/STT serving + German-language evaluation
 - [southbyte-spark-profiles](https://github.com/MvdB/southbyte-spark-profiles) — DGX Spark (GB10) validated profiles, kernels, benchmarks *(this repo)*
-- **southbyte-image** *(planned)* — text-to-image serving + evaluation (diffusers); its GB10 profiles will land here under `image/`
+- [southbyte-image](https://github.com/MvdB/southbyte-image) — text-to-image serving + evaluation (diffusers); its GB10 profiles live here under `image/`
 
 ## License
 
