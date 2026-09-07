@@ -11,7 +11,7 @@ from here.
 
 ```
 vllm/
-├── profiles/   # one <owner>--<model-name>/vllm_profile.conf per model (52),
+├── profiles/   # one <owner>--<model-name>/vllm_profile.conf per model (75),
 │               #   hand-validated PROFILE_* settings for GB10 / 128 GB
 └── custom/     # Dockerfiles for models needing sm_120 kernels not in
                 #   stock vllm/vllm-openai (NVFP4 etc.) + patch_conv3d.py
