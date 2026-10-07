@@ -1,0 +1,38 @@
+# Custom vLLM image für Aleph-Alpha/Kolibri-1 auf DGX Spark (GB10, sm_121).
+#
+# Kolibri-1 bringt eine eigene Architektur mit (model_type "kolibri1",
+# Kolibri1ForCausalLM). Stock-vLLM kennt sie NICHT — sie kommt aus dem Plugin
+# `aleph-alpha-inference`, das auch die Parser `kolibri1` für Reasoning und
+# Tool-Calls mitbringt. Ohne das Plugin startet der Server gar nicht erst.
+#
+# Warum v0.29.0 und keine andere Marke: das Plugin verlangt
+# `vllm>=0.29.0,<0.30.0`, und von den Marken in diesem Fenster gibt es nur für
+# v0.29.0 ein arm64-Image (v0.29.1 und v0.29.2 existieren als Marke nicht,
+# v0.30.0 liegt außerhalb). Die Wahl ist also nicht frei.
+#
+# Das Plugin selbst ist reines Python (py3-none-any), es wird hier also nichts
+# für aarch64 übersetzt. --no-deps, damit pip nicht auf die Idee kommt, vLLM
+# oder torch aus dem Rad neu aufzulösen und das Image damit zu zerlegen; die
+# drei Anforderungen (vllm 0.29.x, torch>=2.9, transformers>=5.5.3) prüft die
+# Zeile darunter stattdessen gegen den tatsächlichen Stand.
+#
+# Build:
+#   docker build -t spark-kolibri1:v1 -f custom/Dockerfile.kolibri1 .
+
+FROM vllm/vllm-openai:v0.29.0
+
+RUN pip install --no-cache-dir --no-deps 'aleph-alpha-inference>=1,<2'
+
+# Früh scheitern, nicht erst beim ersten Serve: sind die Anforderungen des
+# Plugins im Image erfüllt, und registriert es die Architektur wirklich?
+RUN python3 -c "\
+import importlib.metadata as md, vllm, torch, transformers; \
+print('vllm', vllm.__version__, '| torch', torch.__version__, '| transformers', transformers.__version__); \
+assert vllm.__version__.startswith('0.29.'), vllm.__version__; \
+print('aleph-alpha-inference', md.version('aleph-alpha-inference'))"
+
+RUN python3 -c "\
+from vllm.model_executor.models.registry import ModelRegistry; \
+archs = ModelRegistry.get_supported_archs(); \
+assert 'Kolibri1ForCausalLM' in archs, 'Kolibri1ForCausalLM nicht registriert'; \
+print('kolibri1 ok')"
