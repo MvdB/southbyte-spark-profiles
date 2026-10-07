@@ -31,8 +31,24 @@ print('vllm', vllm.__version__, '| torch', torch.__version__, '| transformers', 
 assert vllm.__version__.startswith('0.29.'), vllm.__version__; \
 print('aleph-alpha-inference', md.version('aleph-alpha-inference'))"
 
+# Registriert das Plugin wirklich? Das ist keine Formalie: sein register()
+# faengt JEDE Ausnahme ab und schreibt nur eine Logzeile. Eine kaputte
+# Registrierung haelt den Server also nicht an — er liefe still in
+# "Architektur unbekannt". Deshalb hier, einmal, zur Bauzeit.
+#
+# load_general_plugins() muss davor: vLLM ruft die Einstiegspunkte erst beim
+# Start der Engine auf, die Registry ist vorher leer. Reasoning- und
+# Tool-Parser sind LAZY angemeldet (register_lazy_module), stehen also nicht
+# in den Listen, sondern loesen sich erst beim Nachschlagen auf — der Tool-
+# Parser kolibri1 ist dabei Hermes2ProToolParser, Kolibri teilt dessen
+# <tool_call>-Format.
 RUN python3 -c "\
+from vllm.plugins import load_general_plugins; \
+load_general_plugins(); \
 from vllm.model_executor.models.registry import ModelRegistry; \
-archs = ModelRegistry.get_supported_archs(); \
-assert 'Kolibri1ForCausalLM' in archs, 'Kolibri1ForCausalLM nicht registriert'; \
-print('kolibri1 ok')"
+from vllm.reasoning import ReasoningParserManager; \
+from vllm.tool_parsers import ToolParserManager; \
+assert 'Kolibri1ForCausalLM' in ModelRegistry.get_supported_archs(), 'Architektur nicht registriert'; \
+assert ReasoningParserManager.get_reasoning_parser('kolibri1'), 'Reasoning-Parser fehlt'; \
+assert ToolParserManager.get_tool_parser('kolibri1'), 'Tool-Parser fehlt'; \
+print('kolibri1 ok: Architektur, Reasoning-Parser und Tool-Parser registriert')"
