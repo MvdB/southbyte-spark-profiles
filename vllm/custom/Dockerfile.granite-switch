@@ -1,0 +1,40 @@
+# Custom vLLM image für ibm-granite/granite-switch-4.1-30b auf DGX Spark (GB10).
+#
+# Granite Switch setzt Granite-4.1-30B mit aLoRA-Adaptern (decision,
+# guardian-core) und einer englischen Spracherkennung zu einem Checkpoint
+# zusammen (Architektur GraniteSwitchForCausalLM). Stock-vLLM kennt sie nicht;
+# sie kommt aus dem Paket `granite-switch`, das sich über den Einstiegspunkt
+# vllm.general_plugins einhängt. Kein Rezept auf recipes.vllm.ai.
+#
+# Warum v0.30.0: granite-switch 0.1.1 verlangt vllm>=0.26.0,<0.31.0, torch>=2.11
+# und transformers zwischen 5.16 und 5.17. v0.30.0 ist die neueste Marke in
+# diesem Fenster mit arm64-Image (v0.30.1 gibt es nicht).
+#
+# Das Paket ist reines Python (py3-none-any). --no-deps, damit pip vLLM, torch
+# oder transformers nicht neu auflöst; die Zeile darunter prüft die drei
+# Anforderungen gegen den tatsächlichen Stand des Images.
+#
+# Build:
+#   docker build -t spark-granite-switch:v1 -f custom/Dockerfile.granite-switch .
+
+FROM vllm/vllm-openai:v0.30.0
+
+RUN pip install --no-cache-dir --no-deps 'granite-switch==0.1.1'
+
+RUN python3 -c "\
+import importlib.metadata as md, vllm, torch, transformers; \
+from packaging.version import Version as V; \
+print('vllm', vllm.__version__, '| torch', torch.__version__, '| transformers', transformers.__version__); \
+assert V('0.26') <= V(vllm.__version__) < V('0.31'), vllm.__version__; \
+assert V(torch.__version__.split('+')[0]) >= V('2.11'), torch.__version__; \
+assert V('5.16') <= V(transformers.__version__) <= V('5.17.0'), transformers.__version__; \
+print('granite-switch', md.version('granite-switch'))"
+
+# Registriert das Plugin die Architektur wirklich? vLLM ruft die Einstiegspunkte
+# erst beim Start der Engine auf; load_general_plugins() holt das hier nach.
+RUN python3 -c "\
+from vllm.plugins import load_general_plugins; \
+load_general_plugins(); \
+from vllm.model_executor.models.registry import ModelRegistry; \
+assert 'GraniteSwitchForCausalLM' in ModelRegistry.get_supported_archs(), 'Architektur nicht registriert'; \
+print('granite-switch ok: GraniteSwitchForCausalLM registriert')"
