@@ -15,7 +15,10 @@
 # Anforderungen gegen den tatsächlichen Stand des Images.
 #
 # Build:
-#   docker build -t spark-granite-switch:v1 -f custom/Dockerfile.granite-switch .
+#   docker build -t spark-granite-switch:v2 -f custom/Dockerfile.granite-switch .
+#
+# v2 = v1 plus der letzte Schritt (Allokator-Cache nach jedem Adapter-Umbau
+# leeren); ohne ihn laedt das 30B auf dem GB10 nicht. Das 8B ist mit v1 gemessen.
 
 FROM vllm/vllm-openai:v0.30.0
 
@@ -38,3 +41,18 @@ load_general_plugins(); \
 from vllm.model_executor.models.registry import ModelRegistry; \
 assert 'GraniteSwitchForCausalLM' in ModelRegistry.get_supported_archs(), 'Architektur nicht registriert'; \
 print('granite-switch ok: GraniteSwitchForCausalLM registriert')"
+
+# Speicherspitze beim Laden: finalize_weights() baut je Schicht mit Adapter
+# w_ext = [W_base | lora_A …] und gibt das Original W_base danach frei — aber nur
+# in den Cache des PyTorch-Allokators. w_ext ist ein paar Adapterzeilen groesser
+# als W_base, die frei gewordene Luecke passt also nie fuer die naechste Schicht;
+# der Cache waechst auf fast das Doppelte der Gewichte. Gemessen am 2026-10-25:
+# ohne diesen Schritt 54 GB frei nach dem Laden der Gewichte, dann binnen 14 s
+# unter 8 GB (Abbruch durch den Speicherwaechter); mit ihm "Model loading took
+# 54.93 GiB" und der Tiefstwert 31 GB frei, erreicht erst durch den KV-Cache.
+# Der Schritt bricht ab, wenn die Zeile nicht genau einmal vorkommt.
+RUN F=$(python3 -c "import granite_switch, os; print(os.path.join(os.path.dirname(granite_switch.__file__), 'vllm', 'core', 'lora.py'))") \
+ && test "$(grep -c '^        del W_base$' "$F")" = 1 \
+ && sed -i 's/^        del W_base$/        del W_base\n        torch.cuda.empty_cache()/' "$F" \
+ && grep -A1 '^        del W_base$' "$F" | grep -q 'torch.cuda.empty_cache()' \
+ && echo "granite-switch: empty_cache nach del W_base eingefuegt"
