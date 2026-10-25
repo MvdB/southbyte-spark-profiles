@@ -1,0 +1,24 @@
+# Custom vLLM image für nvidia/Nemotron-3.5-Parse auf DGX Spark (GB10).
+#
+# Parse (RadioMBartPrefixForCausalLM) kennt vLLM nicht selbst; die Architektur und
+# der Logits-Prozessor kommen als Paket `nemotron-parse` aus dem Modellordner und
+# hängen sich als vLLM-Plugin ein. Kein Rezept auf recipes.vllm.ai; die Karte nennt
+# `vllm serve` mit --trust-remote-code und eigenem chat_template.jinja.
+#
+# v0.26.0 wie der Parse-Dienst in SB-FIND, wo genau diese Kombination seit
+# Wochen läuft. beautifulsoup4 braucht die Nachbearbeitung des Pakets.
+#
+# Build (Kontext = Modellordner, aus dem Collection-Sync):
+#   docker build -t spark-nemotron-parse:v1 -f custom/Dockerfile.nemotron-parse \
+#     ~/hf_models/nvidia--Nemotron-3.5-Parse
+
+ARG VLLM_TAG=v0.26.0
+FROM vllm/vllm-openai:${VLLM_TAG}
+
+COPY pyproject.toml LICENSE THIRD_PARTY_NOTICES.md TOKENIZER_ATTRIBUTION.md postprocessing.py latex2html.py /tmp/nemotron-package/
+COPY nemotron_parse /tmp/nemotron-package/nemotron_parse
+COPY vllm_tied_patch /tmp/nemotron-package/vllm_tied_patch
+RUN python3 -m pip install --no-cache-dir --no-deps /tmp/nemotron-package \
+ && python3 -m pip install --no-cache-dir beautifulsoup4==4.13.3 \
+ && rm -rf /tmp/nemotron-package \
+ && python3 -c "import importlib.metadata as md; print('nemotron-parse', md.version('nemotron-parse'))"

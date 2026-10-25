@@ -1,0 +1,27 @@
+# Custom vLLM image für baidu/Unlimited-OCR auf DGX Spark (GB10).
+#
+# Basis ist das Image aus dem Rezept (recipes.vllm.ai/baidu/Unlimited-OCR,
+# vllm/vllm-openai:unlimited-ocr, Juni 2026, arm64 vorhanden). Seither hat das
+# Modell-Repo (2026-10-14, "compatibility with transformers") model_type von
+# "unlimited-ocr" auf "unlimited_ocr" umbenannt. Das Image kennt nur den alten Namen
+# und fällt für den neuen auf den Remote-Code zurück, der mit seinem transformers
+# 5.12 nicht lädt (is_torch_fx_available entfernt, addict/matplotlib fehlen).
+# --hf-overrides model_type hilft nur im API-Prozess; der Tokenizer-Pfad der Engine
+# lädt die Konfiguration ohne Overrides neu (25.10.2026 so gescheitert).
+#
+# Deshalb ein Schritt: den neuen Namen in vLLMs eigener Konfigurations-Registry als
+# zweiten Schlüssel für dieselbe Klasse eintragen. Der Modellordner bleibt, wie ihn
+# der Sync liefert. Der Schritt bricht ab, wenn die Zeile nicht genau einmal vorkommt.
+#
+# Build:
+#   docker build -t spark-unlimited-ocr:v1 -f custom/Dockerfile.unlimited-ocr .
+
+FROM vllm/vllm-openai:unlimited-ocr
+
+RUN F=/usr/local/lib/python3.12/dist-packages/vllm/transformers_utils/config.py \
+ && test "$(grep -c '\*\*{"unlimited-ocr": "UnlimitedOCRConfig"},' "$F")" = 1 \
+ && sed -i 's/\*\*{"unlimited-ocr": "UnlimitedOCRConfig"},/**{"unlimited-ocr": "UnlimitedOCRConfig", "unlimited_ocr": "UnlimitedOCRConfig"},/' "$F" \
+ && python3 -c "\
+from vllm.transformers_utils.config import _CONFIG_REGISTRY as R; \
+assert R['unlimited_ocr'] is R['unlimited-ocr'], 'Alias fehlt'; \
+print('unlimited_ocr ->', R['unlimited_ocr'].__name__)"
