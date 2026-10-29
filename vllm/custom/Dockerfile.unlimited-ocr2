@@ -1,0 +1,19 @@
+# Unlimited-OCR-2 (baidu) auf DGX Spark — transformers-Weg der Modellkarte.
+#
+# Kein vLLM: die DASH-Attention von Version 2 ist in vLLM nur als offener PR da
+# (vllm#64016, Stand 29.10.2026), recipes.vllm.ai kennt nur Version 1. Die Karte
+# testet mit torch 2.13.0 und transformers 4.52.1; die Basis spark-qwen3-tts:v1
+# bringt NGC-torch 2.13 (CUDA 13.3) und Triton fuer die DASH-Kernel mit.
+# transformers 4.52.1 statt 5.x hat einen Nebeneffekt: der LlamaTokenizerFast-
+# Eintrag liest die Byte-Level-tokenizer.json unveraendert — der Tokenizer-Fehler
+# von Version 1 unter transformers 5 tritt hier nicht auf.
+FROM spark-qwen3-tts:v1
+
+RUN pip install --no-cache-dir "transformers==4.52.1" "tokenizers==0.21.4" "huggingface-hub==0.36.0" \
+        "addict==2.4.0" "einops==0.8.2" "easydict==1.13" \
+    && python3 -c "import transformers, torch, triton; print('transformers', transformers.__version__, 'torch', torch.__version__, 'triton', triton.__version__)"
+
+COPY unlimited_ocr2_server.py /opt/uocr2/server.py
+ENV HF_HUB_OFFLINE=1 PORT=8000
+EXPOSE 8000
+ENTRYPOINT ["python3", "/opt/uocr2/server.py"]
